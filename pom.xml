@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.github.dsquare68</groupId>
+    <artifactId>homeforge-plugin-starter-parent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Homeforge Plugin Starter Parent</name>
+    <description>
+        Parent POM for HUB plugins. Declares the dependencies every plugin
+        needs (all [provided] except Flyway), pins the versions to whatever the
+        HUB host ships, and pre-configures the jar/shade build so a plugin POM
+        only has to say who it is and where it lives.
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!--
+            ================================================================
+            PLUGIN CONFIGURATION - every child overrides these two
+            ================================================================
+            plugin.path   : URL path served by HUB, e.g. /gym
+                            Accessible at https://hub.local/gym
+            plugin.schema : PostgreSQL schema for this plugin's tables,
+                            e.g. gym_schema
+            ================================================================
+        -->
+        <plugin.path>/my-plugin</plugin.path>
+        <plugin.schema>my_plugin_schema</plugin.schema>
+
+        <!--
+            Class implementing org.pf4j.Plugin, written into MANIFEST.MF as
+            Plugin-Class. Override in the child if you move or rename it.
+        -->
+        <plugin.bootstrap.class>${project.groupId}.${project.artifactId}.PluginBootstrap</plugin.bootstrap.class>
+
+        <!-- Keep in sync with the HUB host's versions -->
+        <homeforge-api.version>0.0.1-SNAPSHOT</homeforge-api.version>
+        <pf4j.version>3.12.0</pf4j.version>
+        <vaadin.version>25.1.7</vaadin.version>
+        <flyway.version>13.2.0</flyway.version>
+        <hikaricp.version>7.0.2</hikaricp.version>
+        <postgresql.version>42.7.11</postgresql.version>
+        <junit.version>5.11.0</junit.version>
+
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+        <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+        <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.vaadin</groupId>
+                <artifactId>vaadin-bom</artifactId>
+                <version>${vaadin.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!--
+        Inherited by every plugin as-is. These are the dependencies a plugin
+        always has, so they live in <dependencies> rather than
+        <dependencyManagement> - a child gets them without repeating anything.
+
+        Everything except Flyway is [provided]: the HUB host supplies it at
+        runtime, so it must NOT be bundled into the plugin jar.
+    -->
+    <dependencies>
+        <!-- HUB Plugin API - the SPI your plugin implements -->
+        <dependency>
+            <groupId>com.github.dsquare68</groupId>
+            <artifactId>homeforge-api</artifactId>
+            <version>${homeforge-api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+
+        <!-- PF4J - provided by host -->
+        <dependency>
+            <groupId>org.pf4j</groupId>
+            <artifactId>pf4j</artifactId>
+            <version>${pf4j.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Vaadin - provided by host (version from vaadin-bom) -->
+        <dependency>
+            <groupId>com.vaadin</groupId>
+            <artifactId>vaadin-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+            PostgreSQL driver and HikariCP - provided by the host. The plugin
+            opens its own pool from the credentials HUB writes into this jar
+            (see PluginDbConnection), so it needs these at compile time only.
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+            Flyway - needed only at install time to run migrations, and the
+            host does not provide it. [compile] so shade bundles it and the
+            plugin stays self-contained.
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+
+        <!-- Tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!--
+            Fully configured here, declared (coordinates only) by each child.
+            They are not in <build><plugins> because shade binds to the
+            package phase and would otherwise also run against this POM.
+        -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <release>${maven.compiler.release}</release>
+                    </configuration>
+                </plugin>
+
+                <!--
+                    maven-jar-plugin - writes the PF4J manifest entries and
+                    injects plugin.path / plugin.schema as MANIFEST attributes
+                    so HUB can read them without loading the plugin class.
+
+                    Plugin-Id is the artifactId. HUB reads it straight from the
+                    jar manifest and names the generated credentials file after
+                    it (<plugin-id>.properties), so the artifactId, the
+                    manifest entry and that file name are always the same
+                    string - see PluginDbConnection.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>${maven-jar-plugin.version}</version>
+                    <configuration>
+                        <archive>
+                            <manifestEntries>
+                                <!-- PF4J required entries -->
+                                <Plugin-Id>${project.artifactId}</Plugin-Id>
+                                <Plugin-Version>${project.version}</Plugin-Version>
+                                <Plugin-Class>${plugin.bootstrap.class}</Plugin-Class>
+                                <!-- HUB custom entries - read by PluginManager without instantiation -->
+                                <Hub-Path>${plugin.path}</Hub-Path>
+                                <Hub-Schema>${plugin.schema}</Hub-Schema>
+                            </manifestEntries>
+                        </archive>
+                    </configuration>
+                </plugin>
+
+                <!--
+                    maven-shade-plugin - bundles Flyway (and any other [compile]
+                    dependencies) into a fat jar while excluding provided libs.
+                -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>${maven-shade-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <phase>package</phase>
+                            <goals><goal>shade</goal></goals>
+                            <configuration>
+                                <createDependencyReducedPom>false</createDependencyReducedPom>
+                                <!--
+                                    Merge META-INF/services entries instead of letting
+                                    one jar's file overwrite another's. Flyway finds its
+                                    database support (e.g. PostgreSQL) through that
+                                    ServiceLoader file - without this, migrations fail
+                                    with "Unsupported Database".
+                                -->
+                                <transformers>
+                                    <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                </transformers>
+                                <filters>
+                                    <filter>
+                                        <artifact>*:*</artifact>
+                                        <excludes>
+                                            <exclude>META-INF/*.SF</exclude>
+                                            <exclude>META-INF/*.DSA</exclude>
+                                            <exclude>META-INF/*.RSA</exclude>
+                                        </excludes>
+                                    </filter>
+                                </filters>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
