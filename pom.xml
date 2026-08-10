@@ -36,6 +36,15 @@
         <plugin.schema>my_plugin_schema</plugin.schema>
 
         <!--
+            Display name and one-line summary HUB shows in the sidebar and the
+            plugin manager. Kept as properties rather than read from <name> /
+            <description> so a plugin that omits those does not inherit this
+            pom's - and so both stay single-line, as MANIFEST.MF requires.
+        -->
+        <plugin.name>${project.artifactId}</plugin.name>
+        <plugin.description>A HUB plugin.</plugin.description>
+
+        <!--
             Class implementing org.pf4j.Plugin, written into MANIFEST.MF as
             Plugin-Class. Override in the child if you move or rename it.
         -->
@@ -170,6 +179,11 @@
                     it (<plugin-id>.properties), so the artifactId, the
                     manifest entry and that file name are always the same
                     string - see PluginDbConnection.
+
+                    Together the Plugin-* and Hub-* entries carry every field of
+                    PluginMetadata. That is what makes
+                    PluginMetadata.fromManifest(Class) - the default behind
+                    HubPlugin.getMetadata() - work with no code in the plugin.
                 -->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -183,6 +197,8 @@
                                 <Plugin-Version>${project.version}</Plugin-Version>
                                 <Plugin-Class>${plugin.bootstrap.class}</Plugin-Class>
                                 <!-- HUB custom entries - read by PluginManager without instantiation -->
+                                <Hub-Name>${plugin.name}</Hub-Name>
+                                <Hub-Description>${plugin.description}</Hub-Description>
                                 <Hub-Path>${plugin.path}</Hub-Path>
                                 <Hub-Schema>${plugin.schema}</Hub-Schema>
                             </manifestEntries>
