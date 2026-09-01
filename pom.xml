@@ -11,10 +11,11 @@
 
     <name>Homeforge Plugin Starter Parent</name>
     <description>
-        Parent POM for HUB plugins. Declares the dependencies every plugin
-        needs (all [provided] except Flyway), pins the versions to whatever the
-        HUB host ships, and pre-configures the jar/shade build so a plugin POM
-        only has to say who it is and where it lives.
+        Parent POM for HUB plugins. Declares the dependencies every plugin needs
+        (all [provided] except Flyway), version-manages an opt-in persistence
+        stack (Spring Data JPA / Hibernate) and Lombok, pins every version to
+        whatever the HUB host ships, and pre-configures the jar/shade build so a
+        plugin POM only has to say who it is and where it lives.
     </description>
 
     <properties>
@@ -57,6 +58,21 @@
         <flyway.version>13.2.0</flyway.version>
         <hikaricp.version>7.0.2</hikaricp.version>
         <postgresql.version>42.7.11</postgresql.version>
+        <!--
+            Spring Framework - matches the spring-web / spring-webmvc version HUB
+            resolves transitively via vaadin-spring. Covers spring-web plus the
+            core modules (spring-context and friends) a plugin needs to write
+            @Configuration / @RestController classes; all host-provided.
+        -->
+        <spring.version>7.0.8</spring.version>
+        <!--
+            Persistence stack - version pins only (see <dependencyManagement>).
+            A plugin that does relational work opts in by declaring these without
+            versions; a plugin that only uses hubApi.storage() never pays for it.
+        -->
+        <spring-data.version>4.0.5</spring-data.version>
+        <hibernate.version>7.2.12.Final</hibernate.version>
+        <lombok.version>1.18.46</lombok.version>
         <junit.version>5.11.0</junit.version>
 
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -72,6 +88,33 @@
                 <version>${vaadin.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+
+            <!--
+                ============================================================
+                OPT-IN PERSISTENCE STACK - versions only, not inherited
+                ============================================================
+                Spring Data JPA over Hibernate. A plugin that needs relational
+                queries declares the artifacts below WITHOUT a <version> and
+                they get bundled into its shaded jar (the host provides neither).
+                Spring Framework core (spring-context etc.) is host-provided and
+                lives in <dependencies>, so it does NOT need to be repeated here.
+
+                Left out of <dependencies> on purpose: bundling Hibernate adds
+                ~30 MB, and a plugin that only uses hubApi.storage() should not
+                carry it.
+            -->
+      
+
+            <!--
+                Lombok - compile-time only. Declare it [provided] in the plugin
+                that wants it; nothing to bundle.
+            -->
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -106,6 +149,55 @@
         <dependency>
             <groupId>com.vaadin</groupId>
             <artifactId>vaadin-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+            Spring Framework - provided by host. The HUB host ships the real
+            spring-webmvc / spring-context / spring-web jars at runtime
+            (transitively, via vaadin-spring), so none of these are bundled into
+            the plugin's shaded jar.
+
+            spring-web         : @RestController / @GetMapping / ... for
+                                 HubPlugin#restControllers (see homeforge-api).
+            spring-context/... : @Configuration, @Bean, @EnableTransactionManagement
+                                 and the ApplicationContext a plugin needs to
+                                 wire, e.g., its own JPA context.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <version>${spring.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>${spring.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-beans</artifactId>
+            <version>${spring.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <version>${spring.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-aop</artifactId>
+            <version>${spring.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-expression</artifactId>
+            <version>${spring.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -150,6 +242,42 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-orm</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-tx</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-jdbc</artifactId>
+                <version>${spring.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.data</groupId>
+                <artifactId>spring-data-jpa</artifactId>
+                <version>${spring-data.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hibernate.orm</groupId>
+                <artifactId>hibernate-core</artifactId>
+                <version>${hibernate.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.persistence</groupId>
+                <artifactId>jakarta.persistence-api</artifactId>
+                <scope>provided</scope>
+                <version>3.2.0</version>
+            </dependency>
+            <dependency>
+                <groupId>jakarta.transaction</groupId>
+                <artifactId>jakarta.transaction-api</artifactId>
+                <version>2.0.1</version>
+            </dependency>
     </dependencies>
 
     <build>
