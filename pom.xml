@@ -12,10 +12,10 @@
     <name>Homeforge Plugin Starter Parent</name>
     <description>
         Parent POM for HUB plugins. Declares the dependencies every plugin needs
-        (all [provided] except Flyway), version-manages an opt-in persistence
-        stack (Spring Data JPA / Hibernate) and Lombok, pins every version to
-        whatever the HUB host ships, and pre-configures the jar/shade build so a
-        plugin POM only has to say who it is and where it lives.
+        (all [provided] except Flyway, the persistence stack and Lombok), pins
+        every version to whatever the HUB host ships, and pre-configures the
+        jar/shade build so a plugin POM only has to say who it is and where it
+        lives.
     </description>
 
     <properties>
@@ -53,7 +53,15 @@
 
         <!-- Keep in sync with the HUB host's versions -->
         <homeforge-api.version>0.0.1-SNAPSHOT</homeforge-api.version>
-        <pf4j.version>3.12.0</pf4j.version>
+        <!--
+            The host's PluginManager is a SpringPluginManager (see
+            HubPluginManager) and puts pf4j-spring on its own classpath at
+            compile scope - see the host's pom.xml. Depending on the same
+            artifact here, instead of plain pf4j, pulls in the exact pf4j core
+            version pf4j-spring was built against, so a plugin can never drift
+            out of sync with what the host actually loads it with.
+        -->
+        <pf4j-spring.version>0.10.0</pf4j-spring.version>
         <vaadin.version>25.1.7</vaadin.version>
         <flyway.version>13.2.0</flyway.version>
         <hikaricp.version>7.0.2</hikaricp.version>
@@ -66,9 +74,9 @@
         -->
         <spring.version>7.0.8</spring.version>
         <!--
-            Persistence stack - version pins only (see <dependencyManagement>).
-            A plugin that does relational work opts in by declaring these without
-            versions; a plugin that only uses hubApi.storage() never pays for it.
+            Persistence stack - Spring Data JPA over Hibernate, bundled into
+            every plugin's shaded jar (the host provides neither). See the
+            PERSISTENCE block in <dependencies> below.
         -->
         <spring-data.version>4.0.5</spring-data.version>
         <hibernate.version>7.2.12.Final</hibernate.version>
@@ -89,22 +97,6 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-
-            <!--
-                ============================================================
-                OPT-IN PERSISTENCE STACK - versions only, not inherited
-                ============================================================
-                Spring Data JPA over Hibernate. A plugin that needs relational
-                queries declares the artifacts below WITHOUT a <version> and
-                they get bundled into its shaded jar (the host provides neither).
-                Spring Framework core (spring-context etc.) is host-provided and
-                lives in <dependencies>, so it does NOT need to be repeated here.
-
-                Left out of <dependencies> on purpose: bundling Hibernate adds
-                ~30 MB, and a plugin that only uses hubApi.storage() should not
-                carry it.
-            -->
-      
 
             <!--
                 Lombok - compile-time only. Declare it [provided] in the plugin
@@ -137,11 +129,25 @@
         </dependency>
 
 
-        <!-- PF4J - provided by host -->
+        <!--
+            pf4j-spring - provided by host. Depending on this instead of plain
+            pf4j pulls in the exact pf4j core version the host's
+            SpringPluginManager was built against (see the pf4j-spring.version
+            property above) - a version mismatch here is exactly what stops a
+            plugin's @Extension classes (chiefly its HubPlugin implementation)
+            from being found and registered as Spring beans by the host's
+            PluginExtensionRegistrar.
+
+            Plugins still extend plain org.pf4j.Plugin, not
+            org.pf4j.spring.SpringPlugin - the host intentionally gives
+            plugins no ApplicationContext of their own (see
+            PluginExtensionRegistrar on the host for why) - but org.pf4j.Plugin
+            itself now arrives transitively through pf4j-spring.
+        -->
         <dependency>
             <groupId>org.pf4j</groupId>
-            <artifactId>pf4j</artifactId>
-            <version>${pf4j.version}</version>
+            <artifactId>pf4j-spring</artifactId>
+            <version>${pf4j-spring.version}</version>
             <scope>provided</scope>
         </dependency>
 
@@ -202,6 +208,51 @@
         </dependency>
 
         <!--
+            ================================================================
+            PERSISTENCE - Spring Data JPA over Hibernate
+            ================================================================
+            Not provided by the host, so [compile]: the shade plugin bundles
+            these into every plugin's jar (~30 MB). Spring Framework core
+            above is enough to wire a plugin's own JPA context; this is the
+            actual ORM.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-orm</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+            <version>${spring.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-jpa</artifactId>
+            <version>${spring-data.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>${hibernate.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.transaction</groupId>
+            <artifactId>jakarta.transaction-api</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+
+        <!--
             PostgreSQL driver and HikariCP - provided by the host. The plugin
             opens its own pool from the credentials HUB writes into this jar
             (see PluginDbConnection), so it needs these at compile time only.
@@ -242,42 +293,6 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-orm</artifactId>
-                <version>${spring.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-tx</artifactId>
-                <version>${spring.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-jdbc</artifactId>
-                <version>${spring.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.data</groupId>
-                <artifactId>spring-data-jpa</artifactId>
-                <version>${spring-data.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.hibernate.orm</groupId>
-                <artifactId>hibernate-core</artifactId>
-                <version>${hibernate.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>jakarta.persistence</groupId>
-                <artifactId>jakarta.persistence-api</artifactId>
-                <scope>provided</scope>
-                <version>3.2.0</version>
-            </dependency>
-            <dependency>
-                <groupId>jakarta.transaction</groupId>
-                <artifactId>jakarta.transaction-api</artifactId>
-                <version>2.0.1</version>
-            </dependency>
     </dependencies>
 
     <build>
